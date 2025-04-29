@@ -1,0 +1,327 @@
+<script>
+        let inventory = [];
+        let cart = [];
+
+        // Get DOM elements
+        const medicineInput = document.getElementById('medicine');
+        const quantityInput = document.getElementById('quantity');
+        const priceInput = document.getElementById('price');
+        const totalInput = document.getElementById('total');
+        const addToCartButton = document.getElementById('add-to-cart');
+        const cartList = document.getElementById('cart');
+        const totalItemsDisplay = document.getElementById('total-items');
+        const cartTotalDisplay = document.getElementById('cart-total');
+        const checkoutButton = document.getElementById('checkout');
+        const medicinesDataList = document.getElementById('medicines');
+
+        //Error message elements
+        const medicineError = document.getElementById('medicine-error');
+        const quantityError = document.getElementById('quantity-error');
+        const priceError = document.getElementById('price-error');
+        const addToCartError = document.getElementById('add-to-cart-error');
+        const checkoutError = document.getElementById('checkout-error');
+
+        function displayErrorMessage(element, message) {
+            element.textContent = message;
+            element.style.display = 'block';
+        }
+
+        function clearErrorMessage(element) {
+            element.textContent = '';
+            element.style.display = 'none';
+        }
+
+        /**
+         * Initializes the inventory data.  This function is called when the page loads.
+         */
+        // Google Apps Script interaction
+        window.onload = () => {
+            google.script.run.withSuccessHandler(initializeInventory).getInventory();
+        };
+        function initializeInventory() {
+            // Call the server-side function to get the inventory data.
+           //Commented out: google.script is not defined in the browser.
+           // google.script.run.withSuccessHandler(handleInventoryData).withFailureHandler(onScriptError).getInventoryData();
+            //Instead, call handleInventoryData directly with sample data for testing
+
+            const sampleData = [
+              { id: 1, name: 'Medicine A', quantity: 100, unitPrice: 10, category: 'General' },
+              { id: 2, name: 'Medicine B', quantity: 50, unitPrice: 20, category: 'Antibiotic' },
+              { id: 3, name: 'Medicine C', quantity: 200, unitPrice: 5, category: 'Pain Relief' },
+            ];
+            handleInventoryData(sampleData);
+        }
+
+        /**
+         * Handles the inventory data returned from the server.
+         * @param {Array} data An array of objects, where each object represents a medication item.
+         */
+        function handleInventoryData(data) {
+            inventory = data; // Store the inventory data.
+            console.log("Inventory data received:", inventory); //debugging
+            populateMedicineList(); // Populate the datalist.
+        }
+
+        /**
+         * Populates the medicine datalist with medicine names.
+         */
+        function populateMedicineList() {
+            medicinesDataList.innerHTML = ''; // Clear any existing options.
+            inventory.forEach(medicine => {
+                const option = document.createElement('option');
+                option.value = medicine.name;
+                option.textContent = medicine.name; // Set the display text, if different
+                medicinesDataList.appendChild(option);
+            });
+        }
+
+        /**
+         * Handles errors from the Google Apps Script server.
+         * @param {Error} error The error object.
+         */
+        function onScriptError(error) {
+            console.error("Error from Google Apps Script:", error);
+            // Display a user-friendly error message in the UI.  For example:
+            alert("An error occurred: " + error.message);
+        }
+
+
+
+        /**
+         * Adds a selected medicine to the shopping cart.
+         */
+        function addToCart() {
+            clearErrorMessage(medicineError);
+            clearErrorMessage(quantityError);
+            clearErrorMessage(addToCartError);
+            clearErrorMessage(priceError); // Clear price error
+
+            const medicineName = medicineInput.value.trim();
+            const quantity = parseInt(quantityInput.value);
+            const price = parseFloat(priceInput.value); // Get price from input
+
+            // Validate input
+            if (!medicineName) {
+                displayErrorMessage(medicineError, "Please enter a medicine name.");
+                return;
+            }
+            if (isNaN(quantity) || quantity <= 0) {
+                displayErrorMessage(quantityError, "Please enter a valid quantity.");
+                return;
+            }
+             if (isNaN(price) || price <= 0) {
+                displayErrorMessage(priceError, "Please enter a valid price.");
+                return;
+            }
+
+            // Find the selected medicine in the inventory
+            const selectedMedicine = inventory.find(item => item.name === medicineName);
+            if (!selectedMedicine) {
+                displayErrorMessage(medicineError, "Medicine not found in inventory.");
+                return;
+            }
+
+             if (quantity > selectedMedicine.quantity) {
+                displayErrorMessage(addToCartError, "Insufficient stock.");
+                return;
+            }
+
+            // Check if the medicine is already in the cart
+            const existingItem = cart.find(item => item.id === selectedMedicine.id);
+            if (existingItem) {
+                // Update the quantity if it exists
+                existingItem.quantity += quantity;
+                existingItem.totalPrice = existingItem.quantity * price; // use entered price
+            } else {
+                // Add the medicine to the cart
+                cart.push({
+                    id: selectedMedicine.id,
+                    name: selectedMedicine.name,
+                    quantity: quantity,
+                    unitPrice: price, // Use entered price
+                    totalPrice: quantity * price
+                });
+            }
+
+            updateCartDisplay();
+            updateTotals();
+
+            // Clear the input fields
+            medicineInput.value = '';
+            quantityInput.value = '1';
+            priceInput.value = '';
+            totalInput.value = '';
+        }
+
+
+
+        /**
+         * Updates the cart display with the current items.
+         */
+        function updateCartDisplay() {
+            if (cart.length === 0) {
+                cartList.innerHTML = '<li class="text-gray-500">No items in cart.</li>';
+            } else {
+                cartList.innerHTML = ''; // Clear the cart
+                cart.forEach(item => {
+                    const listItem = document.createElement('li');
+                    listItem.className = 'cart-item';
+                    listItem.innerHTML = `
+                        <span class="item-name">${item.name}</span>
+                        <span class="item-quantity">x${item.quantity}</span>
+                        <span class="item-price">Price: ₹${item.totalPrice.toFixed(2)}</span>
+                        <button class="remove-item-btn" data-item-id="${item.id}">Remove</button>
+                    `;
+                    cartList.appendChild(listItem);
+                });
+            }
+             // Add event listeners to the remove buttons
+            const removeButtons = document.querySelectorAll('.remove-item-btn');
+            removeButtons.forEach(button => {
+                button.addEventListener('click', removeItem);
+            });
+        }
+
+        /**
+         * Removes an item from the cart.
+         */
+        function removeItem(event) {
+            const itemId = parseInt(event.target.dataset.itemId);
+            cart = cart.filter(item => item.id !== itemId);
+            updateCartDisplay();
+            updateTotals();
+        }
+
+        /**
+         * Updates the total quantity and price of the cart.
+         */
+        function updateTotals() {
+            let totalItems = 0;
+            let totalPrice = 0;
+            cart.forEach(item => {
+                totalItems += item.quantity;
+                totalPrice += item.totalPrice;
+            });
+            totalItemsDisplay.textContent = totalItems;
+            cartTotalDisplay.textContent = '₹' + totalPrice.toFixed(2);
+        }
+
+        /**
+         * Handles the checkout process.
+         */
+        function checkout() {
+            clearErrorMessage(checkoutError);
+            if (cart.length === 0) {
+                displayErrorMessage(checkoutError, "Your cart is empty.");
+                return;
+            }
+
+            // Prepare the sale data to send to the server.
+           const saleData = {
+                items: cart.map(item => ({
+                    id: item.id,
+                    quantity: item.quantity,
+                    price: item.unitPrice, // Send the unit price
+                })),
+                totalAmount: parseFloat(cartTotalDisplay.textContent.replace('₹', '')),
+                transactionId: 'TXN-' + Math.random().toString(36).substring(7).toUpperCase(), // Generate a unique transaction ID.
+                saleDate: new Date().toISOString()
+            };
+
+            // Update inventory quantities (using a server-side function).
+            //Commented out: google.script is not defined in the browser.
+            // google.script.run.withSuccessHandler(handleCheckoutSuccess)
+            //     .withFailureHandler(onScriptError)
+            //     .updateInventoryData(cart);  // Pass the cart data
+            handleCheckoutSuccess("success");
+
+            // Add sale record
+           // Commented out: google.script is not defined in the browser.
+            // google.script.run.withSuccessHandler(handleAddSaleSuccess)
+            //     .withFailureHandler(onScriptError)
+            //     .addSaleRecord(saleData);
+            handleAddSaleSuccess("success");
+
+            // Clear the cart.
+            cart = [];
+            updateCartDisplay();
+            updateTotals();
+            alert('Checkout successful! Your transaction ID is: ' + saleData.transactionId);
+
+        }
+
+        function handleCheckoutSuccess(response) {
+            if (response === "success") {
+                console.log("Inventory updated successfully.");
+                // Optionally, you could display a success message to the user here.
+            } else {
+                console.error("Failed to update inventory:", response);
+                alert("Failed to update inventory. Please check console for details.  Error: " + response);
+            }
+        }
+
+        function handleAddSaleSuccess(response) {
+             if (response === "success") {
+                console.log("Sale record added successfully.");
+                // Optionally, you could display a success message to the user here.
+            } else {
+                console.error("Failed to add sale record:", response);
+                alert("Failed to add sale record. Please check console for details. Error: " + response);
+            }
+        }
+
+
+        // Event Listeners
+        addToCartButton.addEventListener('click', addToCart);
+        checkoutButton.addEventListener('click', checkout);
+
+        // Initialize the app.
+        window.onload = function() {
+           // Commented out: google.script is not defined in the browser.
+           // google.script.run.withSuccessHandler(handleInventoryData).withFailureHandler(onScriptError).getInventoryData();
+            initializeInventory();
+            updateCartDisplay(); // Initial empty cart display.
+        }
+
+        // Event listener for medicine input change to auto-populate price.
+        medicineInput.addEventListener('change', () => {
+            const medicineName = medicineInput.value.trim();
+            const selectedMedicine = inventory.find(item => item.name === medicineName);
+            if (selectedMedicine) {
+                priceInput.value = selectedMedicine.unitPrice;
+                const quantity = parseInt(quantityInput.value);
+                if(!isNaN(quantity) && quantity > 0){
+                     totalInput.value = selectedMedicine.unitPrice * quantity;
+                }
+                else{
+                    totalInput.value = 0;
+                }
+
+            } else {
+                priceInput.value = '';
+                totalInput.value = '';
+            }
+        });
+
+        quantityInput.addEventListener('input', ()=>{
+            const medicineName = medicineInput.value.trim();
+            const selectedMedicine = inventory.find(item => item.name === medicineName);
+            const quantity = parseInt(quantityInput.value);
+             if (selectedMedicine && !isNaN(quantity) && quantity > 0) {
+                 totalInput.value = selectedMedicine.unitPrice * quantity;
+             }
+             else{
+                totalInput.value = 0;
+             }
+        })
+
+        priceInput.addEventListener('input', () => {
+            const quantity = parseInt(quantityInput.value);
+            const price = parseFloat(priceInput.value);
+            if (!isNaN(quantity) && quantity > 0 && !isNaN(price) && price > 0) {
+                totalInput.value = quantity * price;
+            } else {
+                totalInput.value = 0;
+            }
+        });
+    </script>
