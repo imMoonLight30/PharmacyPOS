@@ -44,7 +44,7 @@ function recordSale(sales) {
     sheet.appendRow([
       transactionId,
       saleDate,
-      item.id,
+      item.name,
       item.quantity,
       item.price,
       totalAmount
