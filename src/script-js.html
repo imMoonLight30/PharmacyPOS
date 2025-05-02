@@ -34,22 +34,15 @@
         /**
          * Initializes the inventory data.  This function is called when the page loads.
          */
-        // Google Apps Script interaction
-        window.onload = () => {
-            google.script.run.withSuccessHandler(initializeInventory).getInventory();
-        };
         function initializeInventory() {
-            // Call the server-side function to get the inventory data.
-           //Commented out: google.script is not defined in the browser.
-           // google.script.run.withSuccessHandler(handleInventoryData).withFailureHandler(onScriptError).getInventoryData();
-            //Instead, call handleInventoryData directly with sample data for testing
+            google.script.run.withSuccessHandler(handleInventoryData).withFailureHandler(onScriptError).getInvetory();
 
-            const sampleData = [
+            /*const sampleData = [
               { id: 1, name: 'Medicine A', quantity: 100, unitPrice: 10, category: 'General' },
               { id: 2, name: 'Medicine B', quantity: 50, unitPrice: 20, category: 'Antibiotic' },
               { id: 3, name: 'Medicine C', quantity: 200, unitPrice: 5, category: 'Pain Relief' },
             ];
-            handleInventoryData(sampleData);
+            handleInventoryData(sampleData);*/
         }
 
         /**
@@ -57,7 +50,12 @@
          * @param {Array} data An array of objects, where each object represents a medication item.
          */
         function handleInventoryData(data) {
-            inventory = data; // Store the inventory data.
+            inventory = data.map((item, index) => ({
+              id: index + 1, // Generate an ID based on the index
+              name: item[0], // Medicine name
+              quantity: item[1], // Quantity
+              unitPrice: item[2] // Unit price
+            }));
             console.log("Inventory data received:", inventory); //debugging
             populateMedicineList(); // Populate the datalist.
         }
@@ -219,7 +217,7 @@
             // Prepare the sale data to send to the server.
            const saleData = {
                 items: cart.map(item => ({
-                    id: item.id,
+                    name: item.name,
                     quantity: item.quantity,
                     price: item.unitPrice, // Send the unit price
                 })),
@@ -227,7 +225,7 @@
                 transactionId: 'TXN-' + Math.random().toString(36).substring(7).toUpperCase(), // Generate a unique transaction ID.
                 saleDate: new Date().toISOString()
             };
-
+            console.log("Sales data here: "+saleData);//debugging
             // Update inventory quantities (using a server-side function).
             //Commented out: google.script is not defined in the browser.
             // google.script.run.withSuccessHandler(handleCheckoutSuccess)
@@ -237,10 +235,11 @@
 
             // Add sale record
            // Commented out: google.script is not defined in the browser.
-            // google.script.run.withSuccessHandler(handleAddSaleSuccess)
-            //     .withFailureHandler(onScriptError)
-            //     .addSaleRecord(saleData);
-            handleAddSaleSuccess("success");
+           //google.script.run.withSuccessHandler(handleInventoryData).withFailureHandler(onScriptError).getInvetory();
+             google.script.run.withSuccessHandler(handleAddSaleSuccess("success"))
+                 .withFailureHandler(onScriptError)
+                 .recordSale(saleData);
+            //handleAddSaleSuccess("success");
 
             // Clear the cart.
             cart = [];

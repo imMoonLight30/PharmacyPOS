@@ -26,13 +26,28 @@ function getInvetory() {
 
 function recordSale(sales) {
   const sheet = SpreadsheetApp.openByUrl("https://docs.google.com/spreadsheets/d/10dpI9staPQsPUMr-t297_nsyENqDVsZOtKtgofBTcVs/edit").getActiveSheet();
-  sales.forEach(item => {
+  /*sales = {
+  items: [
+    { id: '101', quantity: 2, price: 25.99 },
+    { id: '102', quantity: 1, price: 49.99 },
+    { id: '103', quantity: 3, price: 12.50 }
+  ],
+  totalAmount: 121.47,
+  transactionId: 'TXN-ABC123XYZ',
+  saleDate: '2024-07-24T10:00:00Z'
+  };*/
+  const itemsArray = sales.items;
+  const transactionId = sales.transactionId;
+  const saleDate = sales.saleDate;
+  const totalAmount = sales.totalAmount;
+  itemsArray.forEach(item => {
     sheet.appendRow([
-      new Date(),
-      item.name,
-      item.qty,
+      transactionId,
+      saleDate,
+      item.id,
+      item.quantity,
       item.price,
-      item.qty * item.price
+      totalAmount
     ]);
   });
 }
