@@ -11,11 +11,33 @@
     <?!= include('styles-css'); ?>
 </head>
 <body class="bg-gray-100 p-6 rounded-lg">
-    <h1 class="text-3xl font-semibold text-center text-blue-700 mb-8">Pragya Pharmacy POS</h1>
+    <div id="main-header" class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-semibold text-blue-700">Pragya Pharmacy POS</h1>
+        <button id="admin-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+            Admin
+        </button>
+    </div>
 
-    <div class="container mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+    <!-- POS Container -->
+    <div id="pos-container" class="container mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
         <div class="bg-white shadow-md rounded-lg p-6">
             <h2 class="text-xl font-semibold text-gray-800 mb-4">Sales Entry</h2>
+            
+            <!-- Customer Details Section -->
+            <div class="bg-gray-50 p-4 rounded-lg mb-6">
+                <h3 class="text-lg font-medium text-gray-700 mb-3">Customer Details</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="customer-name" class="block text-gray-700 text-sm font-bold mb-2">Customer Name:</label>
+                        <input type="text" id="customer-name" placeholder="Enter customer name" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                    </div>
+                    <div>
+                        <label for="customer-contact" class="block text-gray-700 text-sm font-bold mb-2">Contact Number:</label>
+                        <input type="tel" id="customer-contact" placeholder="Enter contact number" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                    </div>
+                </div>
+            </div>
+
             <div class="mb-4">
                 <label for="medicine" class="block text-gray-700 text-sm font-bold mb-2">Medicine:</label>
                 <input type="text" id="medicine" list="medicines" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
@@ -51,6 +73,241 @@
             </div>
             <button id="checkout" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Checkout</button>
             <p id="checkout-error" class="text-red-500 text-xs italic mt-2" style="display: none;"></p>
+        </div>
+    </div>
+
+    <!-- Bill Generation Page (Initially Hidden) -->
+    <div id="bill-page" class="container mx-auto" style="display: none;">
+        <div class="max-w-4xl mx-auto">
+            <div class="flex justify-between items-center mb-6 no-print">
+                <h1 class="text-2xl font-semibold text-blue-700">Bill Generated</h1>
+                <div class="space-x-4">
+                    <button id="print-bill" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                        Print Bill
+                    </button>
+                    <button id="download-bill" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                        Download PDF
+                    </button>
+                    <button id="back-to-pos-from-bill" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                        New Sale
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bill Content -->
+            <div id="bill-content" class="bg-white shadow-lg rounded-lg p-8 bill-container">
+                <!-- Pharmacy Header -->
+                <div class="text-center mb-6 border-b-2 border-blue-600 pb-4">
+                    <h1 class="text-3xl font-bold text-blue-700">Pragya Pharmacy</h1>
+                    <p class="text-gray-600 mt-2">Your Health, Our Priority</p>
+                    <div class="text-sm text-gray-500 mt-2">
+                        <p>📍 123 Medical Street, Health City, HC 12345</p>
+                        <p>📞 Phone: +91 98765 43210 | ✉️ Email: info@pragyapharmacy.com</p>
+                        <p>License No: PH/2024/001234 | GST No: 12ABCDE3456F7G8</p>
+                    </div>
+                </div>
+
+                <!-- Bill Header -->
+                <div class="grid grid-cols-2 gap-6 mb-6">
+                    <div>
+                        <h3 class="font-semibold text-gray-800 mb-2">Bill To:</h3>
+                        <div class="text-gray-600">
+                            <p id="bill-customer-name" class="font-medium"></p>
+                            <p id="bill-customer-contact"></p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-gray-600">
+                            <p><span class="font-medium">Bill No:</span> <span id="bill-transaction-id"></span></p>
+                            <p><span class="font-medium">Date:</span> <span id="bill-date"></span></p>
+                            <p><span class="font-medium">Time:</span> <span id="bill-time"></span></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Items Table -->
+                <div class="mb-6">
+                    <table class="w-full border-collapse border border-gray-300">
+                        <thead>
+                            <tr class="bg-gray-100">
+                                <th class="border border-gray-300 px-4 py-2 text-left">S.No</th>
+                                <th class="border border-gray-300 px-4 py-2 text-left">Medicine Name</th>
+                                <th class="border border-gray-300 px-4 py-2 text-center">Qty</th>
+                                <th class="border border-gray-300 px-4 py-2 text-right">Unit Price</th>
+                                <th class="border border-gray-300 px-4 py-2 text-right">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bill-items-table">
+                            <!-- Bill items will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Bill Summary -->
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="text-sm text-gray-600">
+                        <p><strong>Payment Terms:</strong> Cash/Card</p>
+                        <p><strong>Total Items:</strong> <span id="bill-total-items"></span></p>
+                    </div>
+                    <div class="text-right">
+                        <div class="border-t border-gray-300 pt-4">
+                            <div class="flex justify-between mb-2">
+                                <span>Subtotal:</span>
+                                <span id="bill-subtotal" class="font-medium"></span>
+                            </div>
+                            <div class="flex justify-between mb-2 text-sm text-gray-600">
+                                <span>GST (18%):</span>
+                                <span id="bill-gst"></span>
+                            </div>
+                            <div class="flex justify-between text-lg font-bold border-t border-gray-300 pt-2">
+                                <span>Total Amount:</span>
+                                <span id="bill-total" class="text-blue-700"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="mt-8 pt-4 border-t border-gray-200 text-center text-sm text-gray-500">
+                    <p class="mb-2">Thank you for choosing Pragya Pharmacy!</p>
+                    <p>For any queries, please contact us at the above details.</p>
+                    <p class="mt-2 font-medium">** This is a computer generated bill **</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Panel (Initially Hidden) -->
+    <div id="admin-panel" class="container mx-auto" style="display: none;">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-semibold text-blue-700">Admin Panel</h1>
+            <button id="back-to-pos" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                Back to POS
+            </button>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="mb-6">
+            <nav class="flex space-x-4">
+                <button id="sales-tab" class="tab-button active bg-blue-500 text-white px-4 py-2 rounded">Sales Data</button>
+                <button id="inventory-tab" class="tab-button bg-gray-300 text-gray-700 px-4 py-2 rounded">Inventory Management</button>
+            </nav>
+        </div>
+
+        <!-- Sales Data Tab -->
+        <div id="sales-content" class="tab-content">
+            <div class="bg-white shadow-md rounded-lg p-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Sales Report</h2>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full bg-white">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="py-2 px-4 border-b text-left">Transaction ID</th>
+                                <th class="py-2 px-4 border-b text-left">Date</th>
+                                <th class="py-2 px-4 border-b text-left">Customer</th>
+                                <th class="py-2 px-4 border-b text-left">Medicine</th>
+                                <th class="py-2 px-4 border-b text-left">Quantity</th>
+                                <th class="py-2 px-4 border-b text-left">Price</th>
+                                <th class="py-2 px-4 border-b text-left">Total Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sales-table-body">
+                            <!-- Sales data will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+                <button id="refresh-sales" class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                    Refresh Sales Data
+                </button>
+            </div>
+        </div>
+
+        <!-- Inventory Management Tab -->
+        <div id="inventory-content" class="tab-content" style="display: none;">
+            <!-- CSV Import Section -->
+            <div class="bg-white shadow-md rounded-lg p-6 mb-8">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Import Medicines from CSV</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="csv-file" class="block text-gray-700 text-sm font-bold mb-2">Select CSV File:</label>
+                        <input type="file" id="csv-file" accept=".csv" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                        <p class="text-xs text-gray-500 mt-1">Expected format: Medicine Name, Quantity, Unit Price</p>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">CSV Preview:</label>
+                        <textarea id="csv-preview" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" rows="4" placeholder="CSV content will appear here..." readonly></textarea>
+                    </div>
+                </div>
+                <div class="mt-4 flex space-x-4">
+                    <button id="import-csv" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" disabled>
+                        Import CSV Data
+                    </button>
+                    <button id="download-template" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                        Download Template
+                    </button>
+                </div>
+                <div id="import-status" class="mt-4" style="display: none;">
+                    <div id="import-progress" class="mb-2">
+                        <div class="bg-gray-200 rounded-full h-2">
+                            <div id="progress-bar" class="bg-blue-600 h-2 rounded-full" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div id="import-results" class="text-sm"></div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Add/Edit Inventory Form -->
+                <div class="bg-white shadow-md rounded-lg p-6">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Add/Edit Medicine</h2>
+                    <form id="inventory-form">
+                        <input type="hidden" id="edit-id" value="">
+                        <div class="mb-4">
+                            <label for="med-name" class="block text-gray-700 text-sm font-bold mb-2">Medicine Name:</label>
+                            <input type="text" id="med-name" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
+                        </div>
+                        <div class="mb-4">
+                            <label for="med-quantity" class="block text-gray-700 text-sm font-bold mb-2">Quantity:</label>
+                            <input type="number" id="med-quantity" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
+                        </div>
+                        <div class="mb-6">
+                            <label for="med-price" class="block text-gray-700 text-sm font-bold mb-2">Unit Price:</label>
+                            <input type="number" step="0.01" id="med-price" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
+                        </div>
+                        <div class="flex space-x-4">
+                            <button type="submit" id="save-medicine" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                                Save Medicine
+                            </button>
+                            <button type="button" id="cancel-edit" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" style="display: none;">
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Inventory List -->
+                <div class="bg-white shadow-md rounded-lg p-6">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Current Inventory</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full bg-white">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="py-2 px-4 border-b text-left">Medicine Name</th>
+                                    <th class="py-2 px-4 border-b text-left">Quantity</th>
+                                    <th class="py-2 px-4 border-b text-left">Unit Price</th>
+                                    <th class="py-2 px-4 border-b text-left">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventory-table-body">
+                                <!-- Inventory data will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <button id="refresh-inventory" class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                        Refresh Inventory
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
   <?!= include('script-js'); ?>
