@@ -119,17 +119,27 @@
                 return;
             }
 
-             if (quantity > selectedMedicine.quantity) {
-                displayErrorMessage(addToCartError, "Insufficient stock.");
+            // Check current cart quantity for this medicine
+            const existingCartItem = cart.find(item => item.id === selectedMedicine.id);
+            const currentCartQuantity = existingCartItem ? existingCartItem.quantity : 0;
+            const totalRequestedQuantity = currentCartQuantity + quantity;
+
+            // Check if total requested quantity exceeds available stock
+            if (totalRequestedQuantity > selectedMedicine.quantity) {
+                const availableToAdd = selectedMedicine.quantity - currentCartQuantity;
+                if (availableToAdd <= 0) {
+                    displayErrorMessage(addToCartError, `"${medicineName}" is already at maximum available quantity in cart.`);
+                } else {
+                    displayErrorMessage(addToCartError, `Insufficient stock. Only ${availableToAdd} more units of "${medicineName}" can be added. (Available: ${selectedMedicine.quantity}, Already in cart: ${currentCartQuantity})`);
+                }
                 return;
             }
 
             // Check if the medicine is already in the cart
-            const existingItem = cart.find(item => item.id === selectedMedicine.id);
-            if (existingItem) {
+            if (existingCartItem) {
                 // Update the quantity if it exists
-                existingItem.quantity += quantity;
-                existingItem.totalPrice = existingItem.quantity * price; // use entered price
+                existingCartItem.quantity += quantity;
+                existingCartItem.totalPrice = existingCartItem.quantity * price; // use entered price
             } else {
                 // Add the medicine to the cart
                 cart.push({
@@ -162,12 +172,31 @@
             } else {
                 cartList.innerHTML = ''; // Clear the cart
                 cart.forEach(item => {
+                    // Find the current inventory item to show available stock
+                    const inventoryItem = inventory.find(invItem => invItem.id === item.id);
+                    const availableStock = inventoryItem ? inventoryItem.quantity : 0;
+                    const remainingStock = availableStock - item.quantity;
+                    
+                    // Determine stock status color
+                    let stockClass = '';
+                    let stockText = `Stock: ${availableStock}`;
+                    if (remainingStock <= 0) {
+                        stockClass = 'out-of-stock';
+                        stockText = 'Out of stock after this sale';
+                    } else if (remainingStock <= 5) {
+                        stockClass = 'low-stock';
+                        stockText = `${remainingStock} remaining after sale`;
+                    } else {
+                        stockText = `${remainingStock} remaining after sale`;
+                    }
+                    
                     const listItem = document.createElement('li');
                     listItem.className = 'cart-item';
                     listItem.innerHTML = `
                         <span class="item-name">${item.name}</span>
                         <span class="item-quantity">x${item.quantity}</span>
                         <span class="item-price">Price: ₹${item.totalPrice.toFixed(2)}</span>
+                        <span class="item-stock text-xs ${stockClass}">(${stockText})</span>
                         <button class="remove-item-btn" data-item-id="${item.id}">Remove</button>
                     `;
                     cartList.appendChild(listItem);
@@ -214,6 +243,10 @@
                 return;
             }
 
+            // Get customer details
+            const customerName = document.getElementById('customer-name').value.trim() || 'Walk-in Customer';
+            const customerContact = document.getElementById('customer-contact').value.trim() || 'N/A';
+
             // Prepare the sale data to send to the server.
            const saleData = {
                 items: cart.map(item => ({
@@ -223,46 +256,148 @@
                 })),
                 totalAmount: parseFloat(cartTotalDisplay.textContent.replace('₹', '')),
                 transactionId: 'TXN-' + Math.random().toString(36).substring(7).toUpperCase(), // Generate a unique transaction ID.
-                saleDate: new Date().toISOString()
+                saleDate: new Date().toISOString(),
+                customerName: customerName,
+                customerContact: customerContact
             };
-            console.log("Sales data here: "+saleData);//debugging
-            // Update inventory quantities (using a server-side function).
-            //Commented out: google.script is not defined in the browser.
-            // google.script.run.withSuccessHandler(handleCheckoutSuccess)
-            //     .withFailureHandler(onScriptError)
-            //     .updateInventoryData(cart);  // Pass the cart data
-            handleCheckoutSuccess("success");
+            console.log("Sales data here: ", saleData);//debugging
 
-            // Add sale record
-           // Commented out: google.script is not defined in the browser.
-           //google.script.run.withSuccessHandler(handleInventoryData).withFailureHandler(onScriptError).getInvetory();
-             google.script.run.withSuccessHandler(handleAddSaleSuccess("success"))
-                 .withFailureHandler(onScriptError)
-                 .recordSale(saleData);
-            //handleAddSaleSuccess("success");
-
-            // Clear the cart.
-            cart = [];
-            updateCartDisplay();
-            updateTotals();
-            alert('Checkout successful! Your transaction ID is: ' + saleData.transactionId);
-
+            // Record sale in database
+            google.script.run.withSuccessHandler((response) => {
+                handleCheckoutSuccess(response);
+                
+                // Only generate bill if sale was successful
+                if (response.status === "success" || response.status === "partial_success") {
+                    generateBill(saleData);
+                }
+            })
+                .withFailureHandler(onScriptError)
+                .recordSale(saleData);
         }
 
         function handleCheckoutSuccess(response) {
-            if (response === "success") {
-                console.log("Inventory updated successfully.");
-                // Optionally, you could display a success message to the user here.
+            if (response.status === "success") {
+                console.log("Sale recorded and inventory updated successfully.");
+                console.log("Inventory updates:", response.inventoryUpdates);
+                
+                // Clear the cart after successful checkout
+                cart = [];
+                updateCartDisplay();
+                updateTotals();
+                // Clear customer details
+                document.getElementById('customer-name').value = '';
+                document.getElementById('customer-contact').value = '';
+                
+                // Refresh inventory to show updated quantities
+                initializeInventory();
+                
+            } else if (response.status === "partial_success") {
+                console.log("Sale recorded but inventory update had issues:", response.inventoryError);
+                alert("Sale completed but there were inventory update issues. Please check admin panel.");
+                
+                // Still clear the cart as sale was recorded
+                cart = [];
+                updateCartDisplay();
+                updateTotals();
+                document.getElementById('customer-name').value = '';
+                document.getElementById('customer-contact').value = '';
+                
+            } else if (response.status === "stock_error") {
+                // Handle stock insufficiency
+                let errorMessage = "Cannot complete sale - Insufficient stock:\n\n";
+                response.stockIssues.forEach(issue => {
+                    if (issue.notFound) {
+                        errorMessage += `• ${issue.medicine}: Not found in inventory\n`;
+                    } else {
+                        errorMessage += `• ${issue.medicine}: Requested ${issue.requested}, Available ${issue.available}\n`;
+                    }
+                });
+                errorMessage += "\nPlease adjust quantities and try again.";
+                alert(errorMessage);
+                return; // Don't generate bill or clear cart
+                
             } else {
-                console.error("Failed to update inventory:", response);
-                alert("Failed to update inventory. Please check console for details.  Error: " + response);
+                console.error("Failed to record sale:", response.message);
+                alert("Failed to record sale: " + response.message);
+                return; // Don't generate bill or clear cart
             }
         }
+
+        // Bill Generation Functions
+        function generateBill(saleData) {
+            // Show bill page using the new page management function
+            showBillPage();
+            
+            // Populate bill data
+            populateBillData(saleData);
+        }
+
+        function populateBillData(saleData) {
+            const billDate = new Date(saleData.saleDate);
+            
+            // Customer details
+            document.getElementById('bill-customer-name').textContent = saleData.customerName;
+            document.getElementById('bill-customer-contact').textContent = saleData.customerContact;
+            
+            // Bill header
+            document.getElementById('bill-transaction-id').textContent = saleData.transactionId;
+            document.getElementById('bill-date').textContent = billDate.toLocaleDateString('en-IN');
+            document.getElementById('bill-time').textContent = billDate.toLocaleTimeString('en-IN');
+            
+            // Populate items table
+            const billItemsTable = document.getElementById('bill-items-table');
+            billItemsTable.innerHTML = '';
+            
+            let totalItems = 0;
+            saleData.items.forEach((item, index) => {
+                totalItems += item.quantity;
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="border border-gray-300 px-4 py-2">${index + 1}</td>
+                    <td class="border border-gray-300 px-4 py-2">${item.name}</td>
+                    <td class="border border-gray-300 px-4 py-2 text-center">${item.quantity}</td>
+                    <td class="border border-gray-300 px-4 py-2 text-right">₹${item.price.toFixed(2)}</td>
+                    <td class="border border-gray-300 px-4 py-2 text-right">₹${(item.quantity * item.price).toFixed(2)}</td>
+                `;
+                billItemsTable.appendChild(row);
+            });
+            
+            // Calculate amounts
+            const subtotal = saleData.totalAmount;
+            const gstAmount = subtotal * 0.18; // 18% GST
+            const total = subtotal + gstAmount;
+            
+            // Populate totals
+            document.getElementById('bill-total-items').textContent = totalItems;
+            document.getElementById('bill-subtotal').textContent = '₹' + subtotal.toFixed(2);
+            document.getElementById('bill-gst').textContent = '₹' + gstAmount.toFixed(2);
+            document.getElementById('bill-total').textContent = '₹' + total.toFixed(2);
+        }
+
+        // Bill page navigation
+        const printBillBtn = document.getElementById('print-bill');
+        const downloadBillBtn = document.getElementById('download-bill');
+        const backToPosFromBillBtn = document.getElementById('back-to-pos-from-bill');
+
+        printBillBtn.addEventListener('click', () => {
+            window.print();
+        });
+
+        downloadBillBtn.addEventListener('click', () => {
+            // For now, we'll use print to PDF functionality
+            // In a real application, you might want to use a library like jsPDF
+            alert('Please use Print > Save as PDF to download the bill.');
+            window.print();
+        });
+
+        backToPosFromBillBtn.addEventListener('click', () => {
+            // Return to POS page using the new page management function
+            showPOSPage();
+        });
 
         function handleAddSaleSuccess(response) {
              if (response === "success") {
                 console.log("Sale record added successfully.");
-                // Optionally, you could display a success message to the user here.
             } else {
                 console.error("Failed to add sale record:", response);
                 alert("Failed to add sale record. Please check console for details. Error: " + response);
@@ -274,12 +409,414 @@
         addToCartButton.addEventListener('click', addToCart);
         checkoutButton.addEventListener('click', checkout);
 
+        // Admin functionality
+        const adminBtn = document.getElementById('admin-btn');
+        const backToPosBtn = document.getElementById('back-to-pos');
+        const posContainer = document.getElementById('pos-container');
+        const adminPanel = document.getElementById('admin-panel');
+        const billPage = document.getElementById('bill-page');
+        const mainHeader = document.getElementById('main-header');
+        const salesTab = document.getElementById('sales-tab');
+        const inventoryTab = document.getElementById('inventory-tab');
+        const salesContent = document.getElementById('sales-content');
+        const inventoryContent = document.getElementById('inventory-content');
+
+        // Page management functions
+        function showPOSPage() {
+            posContainer.style.display = 'grid';
+            adminPanel.style.display = 'none';
+            billPage.style.display = 'none';
+            mainHeader.style.display = 'flex';
+            document.body.classList.remove('no-header');
+        }
+
+        function showAdminPage() {
+            posContainer.style.display = 'none';
+            adminPanel.style.display = 'block';
+            billPage.style.display = 'none';
+            mainHeader.style.display = 'none';
+            document.body.classList.add('no-header');
+        }
+
+        function showBillPage() {
+            posContainer.style.display = 'none';
+            adminPanel.style.display = 'none';
+            billPage.style.display = 'block';
+            mainHeader.style.display = 'none';
+            document.body.classList.add('no-header');
+        }
+
+        // Admin panel navigation
+        adminBtn.addEventListener('click', () => {
+            showAdminPage();
+            loadSalesData();
+        });
+
+        backToPosBtn.addEventListener('click', () => {
+            showPOSPage();
+        });
+
+        // Tab switching
+        salesTab.addEventListener('click', () => {
+            switchTab('sales');
+            loadSalesData();
+        });
+
+        inventoryTab.addEventListener('click', () => {
+            switchTab('inventory');
+            loadInventoryData();
+        });
+
+        function switchTab(tabName) {
+            // Remove active class from all tabs
+            document.querySelectorAll('.tab-button').forEach(tab => {
+                tab.classList.remove('active', 'bg-blue-500', 'text-white');
+                tab.classList.add('bg-gray-300', 'text-gray-700');
+            });
+
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.style.display = 'none';
+            });
+
+            if (tabName === 'sales') {
+                salesTab.classList.add('active', 'bg-blue-500', 'text-white');
+                salesTab.classList.remove('bg-gray-300', 'text-gray-700');
+                salesContent.style.display = 'block';
+            } else if (tabName === 'inventory') {
+                inventoryTab.classList.add('active', 'bg-blue-500', 'text-white');
+                inventoryTab.classList.remove('bg-gray-300', 'text-gray-700');
+                inventoryContent.style.display = 'block';
+            }
+        }
+
+        // Load sales data
+        function loadSalesData() {
+            google.script.run.withSuccessHandler(handleSalesData).withFailureHandler(onScriptError).getSalesData();
+        }
+
+        function handleSalesData(data) {
+            const salesTableBody = document.getElementById('sales-table-body');
+            salesTableBody.innerHTML = '';
+
+            if (data.length === 0) {
+                salesTableBody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-gray-500">No sales data found</td></tr>';
+                return;
+            }
+
+            data.forEach(sale => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="py-2 px-4 border-b">${sale[0]}</td>
+                    <td class="py-2 px-4 border-b">${new Date(sale[1]).toLocaleDateString()}</td>
+                    <td class="py-2 px-4 border-b">${sale[6] || 'Walk-in Customer'}</td>
+                    <td class="py-2 px-4 border-b">${sale[2]}</td>
+                    <td class="py-2 px-4 border-b">${sale[3]}</td>
+                    <td class="py-2 px-4 border-b">₹${sale[4]}</td>
+                    <td class="py-2 px-4 border-b">₹${sale[5]}</td>
+                `;
+                salesTableBody.appendChild(row);
+            });
+        }
+
+        // Load inventory data for admin
+        function loadInventoryData() {
+            google.script.run.withSuccessHandler(handleAdminInventoryData).withFailureHandler(onScriptError).getInvetory();
+        }
+
+        function handleAdminInventoryData(data) {
+            const inventoryTableBody = document.getElementById('inventory-table-body');
+            inventoryTableBody.innerHTML = '';
+
+            if (data.length === 0) {
+                inventoryTableBody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">No inventory data found</td></tr>';
+                return;
+            }
+
+            data.forEach((item, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="py-2 px-4 border-b">${item[0]}</td>
+                    <td class="py-2 px-4 border-b">${item[1]}</td>
+                    <td class="py-2 px-4 border-b">₹${item[2]}</td>
+                    <td class="py-2 px-4 border-b">
+                        <button class="action-btn edit-btn" onclick="editMedicine(${index}, '${item[0]}', ${item[1]}, ${item[2]})">Edit</button>
+                        <button class="action-btn delete-btn" onclick="deleteMedicineConfirm(${index}, '${item[0]}')">Delete</button>
+                    </td>
+                `;
+                inventoryTableBody.appendChild(row);
+            });
+        }
+
+        // Inventory management functions
+        const inventoryForm = document.getElementById('inventory-form');
+        const saveMedicineBtn = document.getElementById('save-medicine');
+        const cancelEditBtn = document.getElementById('cancel-edit');
+        const refreshSalesBtn = document.getElementById('refresh-sales');
+        const refreshInventoryBtn = document.getElementById('refresh-inventory');
+        
+        // CSV Import elements
+        const csvFileInput = document.getElementById('csv-file');
+        const csvPreview = document.getElementById('csv-preview');
+        const importCsvBtn = document.getElementById('import-csv');
+        const downloadTemplateBtn = document.getElementById('download-template');
+        const importStatus = document.getElementById('import-status');
+        const progressBar = document.getElementById('progress-bar');
+        const importResults = document.getElementById('import-results');
+        
+        let editingIndex = -1;
+
+        inventoryForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            saveMedicine();
+        });
+
+        cancelEditBtn.addEventListener('click', () => {
+            cancelEdit();
+        });
+
+        refreshSalesBtn.addEventListener('click', () => {
+            loadSalesData();
+        });
+
+        refreshInventoryBtn.addEventListener('click', () => {
+            loadInventoryData();
+        });
+
+        // CSV Import event listeners
+        csvFileInput.addEventListener('change', handleFileSelect);
+        importCsvBtn.addEventListener('click', importCSVData);
+        downloadTemplateBtn.addEventListener('click', downloadCSVTemplate);
+
+        // Handle CSV file selection
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file && file.type === 'text/csv') {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const csvContent = e.target.result;
+                    csvPreview.value = csvContent;
+                    importCsvBtn.disabled = false;
+                    
+                    // Basic validation
+                    const lines = csvContent.split('\n').filter(line => line.trim() !== '');
+                    if (lines.length === 0) {
+                        alert('The CSV file appears to be empty.');
+                        importCsvBtn.disabled = true;
+                    }
+                };
+                reader.readAsText(file);
+            } else {
+                alert('Please select a valid CSV file.');
+                csvPreview.value = '';
+                importCsvBtn.disabled = true;
+            }
+        }
+
+        // Import CSV data
+        function importCSVData() {
+            const csvContent = csvPreview.value.trim();
+            if (!csvContent) {
+                alert('No CSV data to import.');
+                return;
+            }
+
+            // Show progress
+            importStatus.style.display = 'block';
+            progressBar.style.width = '0%';
+            importResults.innerHTML = '<div class="import-warning">Processing CSV data...</div>';
+            importCsvBtn.disabled = true;
+
+            // Simulate progress
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += 10;
+                progressBar.style.width = progress + '%';
+                if (progress >= 90) {
+                    clearInterval(progressInterval);
+                }
+            }, 100);
+
+            // Import data via Google Apps Script
+            google.script.run
+                .withSuccessHandler(handleCSVImportSuccess)
+                .withFailureHandler(handleCSVImportError)
+                .importMedicinesFromCSV(csvContent);
+        }
+
+        // Handle successful CSV import
+        function handleCSVImportSuccess(result) {
+            progressBar.style.width = '100%';
+            importCsvBtn.disabled = false;
+
+            if (result.status === 'completed') {
+                let resultHTML = `<div class="import-success">
+                    <strong>Import Completed!</strong><br>
+                    Successfully imported: ${result.successCount} medicines<br>`;
+                
+                if (result.errorCount > 0) {
+                    resultHTML += `Errors encountered: ${result.errorCount}<br>`;
+                }
+                resultHTML += `</div>`;
+
+                if (result.errors && result.errors.length > 0) {
+                    resultHTML += `<div class="import-error mt-2">
+                        <strong>Errors:</strong><br>
+                        ${result.errors.slice(0, 10).join('<br>')}`;
+                    
+                    if (result.errors.length > 10) {
+                        resultHTML += `<br><em>... and ${result.errors.length - 10} more errors</em>`;
+                    }
+                    resultHTML += `</div>`;
+                }
+
+                importResults.innerHTML = resultHTML;
+                
+                // Refresh inventory display
+                loadInventoryData();
+                // Also refresh the main inventory for POS
+                initializeInventory();
+                
+                // Clear the form
+                csvFileInput.value = '';
+                csvPreview.value = '';
+                importCsvBtn.disabled = true;
+                
+            } else {
+                importResults.innerHTML = `<div class="import-error">
+                    <strong>Import Failed:</strong><br>
+                    ${result.message}
+                </div>`;
+            }
+        }
+
+        // Handle CSV import error
+        function handleCSVImportError(error) {
+            progressBar.style.width = '100%';
+            importCsvBtn.disabled = false;
+            importResults.innerHTML = `<div class="import-error">
+                <strong>Import Error:</strong><br>
+                ${error.message || error.toString()}
+            </div>`;
+        }
+
+        // Download CSV template
+        function downloadCSVTemplate() {
+            google.script.run
+                .withSuccessHandler(handleTemplateDownload)
+                .withFailureHandler(onScriptError)
+                .getCSVTemplate();
+        }
+
+        function handleTemplateDownload(templateData) {
+            // Create a blob with the CSV template
+            const blob = new Blob([templateData], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            
+            // Create a temporary link and click it to download
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'medicine_inventory_template.csv';
+            document.body.appendChild(a);
+            a.click();
+            
+            // Clean up
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+
+        function saveMedicine() {
+            const name = document.getElementById('med-name').value.trim();
+            const quantity = parseInt(document.getElementById('med-quantity').value);
+            const price = parseFloat(document.getElementById('med-price').value);
+
+            if (!name || isNaN(quantity) || isNaN(price) || quantity <= 0 || price <= 0) {
+                alert('Please fill in all fields with valid values.');
+                return;
+            }
+
+            const medicineData = {
+                name: name,
+                quantity: quantity,
+                unitPrice: price
+            };
+
+            if (editingIndex >= 0) {
+                // Update existing medicine
+                google.script.run
+                    .withSuccessHandler(handleMedicineSaveSuccess)
+                    .withFailureHandler(onScriptError)
+                    .updateMedicine(editingIndex, medicineData);
+            } else {
+                // Add new medicine
+                google.script.run
+                    .withSuccessHandler(handleMedicineSaveSuccess)
+                    .withFailureHandler(onScriptError)
+                    .addMedicine(medicineData);
+            }
+        }
+
+        function handleMedicineSaveSuccess(response) {
+            if (response === "success") {
+                alert(editingIndex >= 0 ? 'Medicine updated successfully!' : 'Medicine added successfully!');
+                resetForm();
+                loadInventoryData();
+                // Also refresh the main inventory for POS
+                initializeInventory();
+            } else {
+                alert('Error saving medicine: ' + response);
+            }
+        }
+
+        function editMedicine(index, name, quantity, price) {
+            editingIndex = index;
+            document.getElementById('med-name').value = name;
+            document.getElementById('med-quantity').value = quantity;
+            document.getElementById('med-price').value = price;
+            document.getElementById('save-medicine').textContent = 'Update Medicine';
+            document.getElementById('cancel-edit').style.display = 'inline-block';
+        }
+
+        function cancelEdit() {
+            resetForm();
+        }
+
+        function resetForm() {
+            editingIndex = -1;
+            document.getElementById('med-name').value = '';
+            document.getElementById('med-quantity').value = '';
+            document.getElementById('med-price').value = '';
+            document.getElementById('save-medicine').textContent = 'Save Medicine';
+            document.getElementById('cancel-edit').style.display = 'none';
+        }
+
+        function deleteMedicineConfirm(index, name) {
+            if (confirm(`Are you sure you want to delete "${name}" from inventory?`)) {
+                google.script.run
+                    .withSuccessHandler(handleMedicineDeleteSuccess)
+                    .withFailureHandler(onScriptError)
+                    .deleteMedicine(index);
+            }
+        }
+
+        function handleMedicineDeleteSuccess(response) {
+            if (response === "success") {
+                alert('Medicine deleted successfully!');
+                loadInventoryData();
+                // Also refresh the main inventory for POS
+                initializeInventory();
+            } else {
+                alert('Error deleting medicine: ' + response);
+            }
+        }
+
         // Initialize the app.
         window.onload = function() {
            // Commented out: google.script is not defined in the browser.
            // google.script.run.withSuccessHandler(handleInventoryData).withFailureHandler(onScriptError).getInventoryData();
             initializeInventory();
             updateCartDisplay(); // Initial empty cart display.
+            showPOSPage(); // Ensure we start with POS page visible
         }
 
         // Event listener for medicine input change to auto-populate price.
