@@ -24,7 +24,7 @@ function importMedicinesFromCSV(csvData) {
       }
       
       const name = columns[0];
-      const quantity = parseInt(columns[1]);
+      const quantity = parseInt(columns[1], 10);
       const price = parseFloat(columns[2]);
       
       if (!name || name === '') {

@@ -51,7 +51,10 @@ function updateInventoryAfterSale(saleItems) {
     
   } catch (error) {
     console.error("Error updating inventory:", error);
-    return "error: " + error.toString();
+    return {
+      status: "error",
+      message: error.toString()
+    };
   }
 }
 

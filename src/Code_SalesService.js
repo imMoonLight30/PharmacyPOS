@@ -4,7 +4,7 @@
 
 function getSalesData() {
   const sheet = SpreadsheetApp.openByUrl("https://docs.google.com/spreadsheets/d/10dpI9staPQsPUMr-t297_nsyENqDVsZOtKtgofBTcVs/edit").getActiveSheet();
-  var res;
+  let res;
   var lastRow = sheet.getLastRow();
   if (lastRow > 1) {
     var dataRange = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn());
