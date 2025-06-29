@@ -500,20 +500,61 @@
             salesTableBody.innerHTML = '';
 
             if (data.length === 0) {
-                salesTableBody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-gray-500">No sales data found</td></tr>';
+                salesTableBody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-gray-500">No sales data found</td></tr>';
                 return;
             }
 
+            // Group data by Transaction ID
+            const groupedSales = {};
+            
             data.forEach(sale => {
+                const transactionId = sale[0];
+                const date = sale[1];
+                const medicineName = sale[2];
+                const quantity = sale[3];
+                const price = sale[4];
+                const totalAmount = sale[5];
+                const customerName = sale[6] || 'Walk-in Customer';
+                const customerContact = sale[7] || 'N/A';
+                
+                if (!groupedSales[transactionId]) {
+                    groupedSales[transactionId] = {
+                        transactionId: transactionId,
+                        date: date,
+                        customerName: customerName,
+                        customerContact: customerContact,
+                        medicines: [],
+                        totalAmount: totalAmount
+                    };
+                }
+                
+                // Add medicine to the group
+                groupedSales[transactionId].medicines.push({
+                    name: medicineName,
+                    quantity: quantity,
+                    price: price
+                });
+            });
+
+            // Convert to array and sort by date (most recent first)
+            const sortedSales = Object.values(groupedSales).sort((a, b) => 
+                new Date(b.date) - new Date(a.date)
+            );
+
+            // Create table rows
+            sortedSales.forEach(saleGroup => {
+                // Format medicines as comma-separated string
+                const medicinesText = saleGroup.medicines.map(med => 
+                    `${med.name}*${med.quantity}*₹${med.price}`
+                ).join(', ');
+                
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td class="py-2 px-4 border-b">${sale[0]}</td>
-                    <td class="py-2 px-4 border-b">${new Date(sale[1]).toLocaleDateString()}</td>
-                    <td class="py-2 px-4 border-b">${sale[6] || 'Walk-in Customer'}</td>
-                    <td class="py-2 px-4 border-b">${sale[2]}</td>
-                    <td class="py-2 px-4 border-b">${sale[3]}</td>
-                    <td class="py-2 px-4 border-b">₹${sale[4]}</td>
-                    <td class="py-2 px-4 border-b">₹${sale[5]}</td>
+                    <td class="py-2 px-4 border-b font-medium text-blue-600">${saleGroup.transactionId}</td>
+                    <td class="py-2 px-4 border-b">${new Date(saleGroup.date).toLocaleDateString()}</td>
+                    <td class="py-2 px-4 border-b">${saleGroup.customerName}</td>
+                    <td class="py-2 px-4 border-b text-sm">${medicinesText}</td>
+                    <td class="py-2 px-4 border-b font-semibold text-green-600">₹${saleGroup.totalAmount}</td>
                 `;
                 salesTableBody.appendChild(row);
             });
